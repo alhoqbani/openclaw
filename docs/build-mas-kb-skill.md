@@ -196,8 +196,7 @@ metadata:
   {
     "openclaw":
       {
-        "requires": { "bins": ["uv"], "env": ["MAS_API_KEY"] },
-        "primaryEnv": "MAS_API_KEY",
+        "requires": { "bins": ["uv"] },
         "install":
           [
             {
@@ -230,9 +229,9 @@ Fields under `metadata.openclaw`:
 
 If the skill needs NO special binaries, NO API keys, and runs everywhere -- you can omit `metadata.openclaw` entirely and the skill will always be eligible.
 
-### 4.4 Config Overrides on the Target Machine
+### 4.4 Config Overrides (`~/.openclaw/openclaw.json`)
 
-On the machine where the skill is installed, the user configures it in `~/.openclaw/openclaw.json`:
+On each machine, the user configures skills in `~/.openclaw/openclaw.json`:
 
 ```json5
 {
@@ -240,15 +239,11 @@ On the machine where the skill is installed, the user configures it in `~/.openc
     entries: {
       "mas-kb": {
         enabled: true,
-        apiKey: "THE_MAS_API_KEY_HERE",
         env: {
-          MAS_API_KEY: "THE_MAS_API_KEY_HERE",
-          MAS_API_ENDPOINT: "https://mas.example.com/api/search"
-        },
-        config: {
-          // Any custom per-skill config fields
-          defaultLimit: 10,
-          defaultLanguage: "ar"
+          MAS_ES_HOST: "http://localhost:9200",
+          MAS_PG_HOST: "localhost",
+          MAS_PG_PORT: "5432",
+          MAS_OLLAMA_HOST: "http://localhost:11434"
         }
       }
     }
@@ -256,18 +251,119 @@ On the machine where the skill is installed, the user configures it in `~/.openc
 }
 ```
 
-Rules:
-- `enabled: false` disables the skill even if installed
-- `env` values are injected only if not already set in the process environment
-- `apiKey` is a shortcut -- it sets whichever env var `primaryEnv` points to
-- `config` is an optional bag for custom fields; not injected as env vars
-- Environment injection is scoped to the agent run, not the global shell
+**How env injection works** (important for understanding the multi-machine setup):
 
-### 4.5 Does `mas-kb` Need Additional Config?
+1. When an agent run starts, OpenClaw reads `skills.entries.<name>.env` from config
+2. For each key-value pair, it checks: is `process.env[key]` already set?
+3. **Only if the var is NOT already set**, it injects the config value into `process.env`
+4. Child processes (Python scripts via Bash tool) inherit `process.env` automatically
+5. When the agent run ends, OpenClaw restores the original environment
 
-**Minimum**: If the search script needs an API key and endpoint, declare them in `requires.env` and let the user set them via `skills.entries.mas-kb.env` in `openclaw.json`. That's it.
+This means:
+- Config env vars **do NOT override** existing system environment variables
+- If you `export MAS_ES_HOST=...` in your shell profile, that takes precedence over config
+- The `apiKey` shortcut sets whichever env var `primaryEnv` points to (same precedence rules)
+- `config` is an optional bag for custom fields; NOT injected as env vars
+- `enabled: false` disables the skill entirely
 
-**Optional**: If you want the agent to be able to read custom config (like default result limits, language preferences, etc.), document them in SKILL.md as env vars and have the user set them in the `env` block. The script reads them from `os.environ`. Keep it simple -- don't over-engineer config.
+### 4.5 Multi-Machine Setup (mac-mini + MacBook Pro)
+
+The skill connects to three services: Elasticsearch, PostgreSQL, and Ollama. These run on the mac-mini. Two machines need to reach them:
+
+| Machine | Role | How it reaches services |
+|---|---|---|
+| **mac-mini** | Production host | `localhost` (services run here) |
+| **MacBook Pro** | Development | Tailscale tailnet URLs |
+
+#### Environment Variables
+
+The Python script must read all connection details from environment variables with **sensible defaults for mac-mini** (localhost). This way mac-mini needs zero config and MacBook Pro just overrides the URLs.
+
+Define these env vars in the script:
+
+```python
+# Connection defaults (suitable for mac-mini where services run locally)
+ES_HOST     = os.environ.get("MAS_ES_HOST",     "http://localhost:9200")
+PG_HOST     = os.environ.get("MAS_PG_HOST",     "localhost")
+PG_PORT     = int(os.environ.get("MAS_PG_PORT", "5432"))
+PG_DB       = os.environ.get("MAS_PG_DB",       "mas")
+PG_USER     = os.environ.get("MAS_PG_USER",     "mas")
+PG_PASSWORD = os.environ.get("MAS_PG_PASSWORD",  "")
+OLLAMA_HOST = os.environ.get("MAS_OLLAMA_HOST", "http://localhost:11434")
+```
+
+All vars are prefixed with `MAS_` to avoid collisions with other skills or system vars.
+
+#### mac-mini Config (`~/.openclaw/openclaw.json`)
+
+No env overrides needed -- the script defaults to localhost:
+
+```json5
+{
+  skills: {
+    entries: {
+      "mas-kb": {
+        enabled: true
+        // No env block needed: script defaults to localhost
+      }
+    }
+  }
+}
+```
+
+#### MacBook Pro Config (`~/.openclaw/openclaw.json`)
+
+Override the hosts to use Tailscale tailnet addresses:
+
+```json5
+{
+  skills: {
+    entries: {
+      "mas-kb": {
+        enabled: true,
+        env: {
+          MAS_ES_HOST: "https://mac-mini.spotted-temperature.ts.net:9200",
+          MAS_PG_HOST: "mac-mini.spotted-temperature.ts.net",
+          MAS_PG_PORT: "5432",
+          MAS_OLLAMA_HOST: "http://mac-mini.spotted-temperature.ts.net:11434"
+        }
+      }
+    }
+  }
+}
+```
+
+#### SKILL.md Must Document All Env Vars
+
+In the SKILL.md body, include a clear table of all environment variables:
+
+```markdown
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `MAS_ES_HOST` | `http://localhost:9200` | Elasticsearch endpoint |
+| `MAS_PG_HOST` | `localhost` | PostgreSQL hostname |
+| `MAS_PG_PORT` | `5432` | PostgreSQL port |
+| `MAS_PG_DB` | `mas` | PostgreSQL database name |
+| `MAS_PG_USER` | `mas` | PostgreSQL username |
+| `MAS_PG_PASSWORD` | *(empty)* | PostgreSQL password |
+| `MAS_OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
+
+Defaults are suitable for the mac-mini where services run locally.
+Override via `skills.entries.mas-kb.env` in `~/.openclaw/openclaw.json` for remote access (e.g., via Tailscale).
+```
+
+#### SKILL.md Metadata: Do NOT Require These Env Vars
+
+Since the script has sensible defaults, do NOT list the connection vars in `metadata.openclaw.requires.env`. If you did, the skill would refuse to load on mac-mini where they're intentionally unset. Only require vars that have no valid default:
+
+```yaml
+metadata:
+  {"openclaw": {"requires": {"bins": ["uv"]}}}
+```
+
+The `requires.env` gate means "skill won't load without this var". Connection vars with defaults should NOT be gated -- they're optional overrides.
 
 ---
 
@@ -493,7 +589,7 @@ Because the script uses `uv run`, declare `uv` as a required binary:
 
 ```yaml
 metadata:
-  {"openclaw": {"requires": {"bins": ["uv"], "env": ["MAS_API_KEY"]}, "primaryEnv": "MAS_API_KEY", "install": [{"id": "uv-brew", "kind": "brew", "formula": "uv", "bins": ["uv"], "label": "Install uv (brew)"}]}}
+  {"openclaw": {"requires": {"bins": ["uv"]}, "install": [{"id": "uv-brew", "kind": "brew", "formula": "uv", "bins": ["uv"], "label": "Install uv (brew)"}]}}
 ```
 
 ### Do NOT Use
