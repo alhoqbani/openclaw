@@ -64,7 +64,7 @@ The markdown body contains instructions the agent reads after deciding to use th
 
 - Keep under 500 lines. Move detailed docs to `references/`
 - Use imperative form ("Search documents with...", not "This skill searches...")
-- Reference scripts using `{baseDir}` placeholder: `python3 {baseDir}/scripts/search.py`
+- Reference scripts using `{baseDir}` placeholder: `uv run {baseDir}/scripts/search.py`
 - Reference files in `references/` and `assets/` with relative paths from skill root
 - Do not create README.md, CHANGELOG.md, INSTALLATION_GUIDE.md, or any auxiliary docs
 
@@ -100,9 +100,9 @@ Design considerations:
 Example invocation pattern for the SKILL.md to document:
 
 ```bash
-python3 {baseDir}/scripts/search.py --query "safety guidelines" --limit 10
-python3 {baseDir}/scripts/search.py --query "compliance requirements" --filter-type policy --limit 5
-python3 {baseDir}/scripts/search.py --query "training materials" --page 2
+uv run {baseDir}/scripts/search.py --query "safety guidelines" --limit 10
+uv run {baseDir}/scripts/search.py --query "compliance requirements" --filter-type policy --limit 5
+uv run {baseDir}/scripts/search.py --query "training materials" --page 2
 ```
 
 You may split into multiple scripts if needed (e.g., `search.py`, `auth.py`, `utils.py`), but prefer a single script if possible to keep things simple.
@@ -196,17 +196,16 @@ metadata:
   {
     "openclaw":
       {
-        "emoji": "🔍",
-        "requires": { "bins": ["python3"], "env": ["MAS_API_KEY"] },
+        "requires": { "bins": ["uv"], "env": ["MAS_API_KEY"] },
         "primaryEnv": "MAS_API_KEY",
         "install":
           [
             {
-              "id": "python-brew",
+              "id": "uv-brew",
               "kind": "brew",
-              "formula": "python",
-              "bins": ["python3"],
-              "label": "Install Python (brew)",
+              "formula": "uv",
+              "bins": ["uv"],
+              "label": "Install uv (brew)",
             },
           ],
       },
@@ -395,7 +394,7 @@ Search MAS documents using keyword or semantic queries.
 ## Quick Start
 
 ```bash
-python3 {baseDir}/scripts/search.py --query "your search terms" --limit 10
+uv run {baseDir}/scripts/search.py --query "your search terms" --limit 10
 ```
 
 ## Parameters
@@ -425,19 +424,101 @@ python3 {baseDir}/scripts/search.py --query "your search terms" --limit 10
 
 ---
 
-## 7. Python Script Guidelines
+## 7. Python Environment & Dependencies
+
+### The Three Patterns in OpenClaw
+
+OpenClaw skills use one of three patterns for Python. Choose based on whether external packages are needed:
+
+**Pattern A: Standard Library Only** -- Used by most skills (`openai-image-gen`, `skill-creator`, `model-usage`). No dependency management needed.
+
+```bash
+uv run {baseDir}/scripts/search.py --query "..."
+```
+
+**Pattern B: PEP 723 Inline Metadata + `uv run`** -- Used by `nano-banana-pro`. Dependencies declared inline in the script file itself. `uv` reads the PEP 723 block and auto-installs into an isolated environment. No `requirements.txt`, no manual venv setup.
+
+```python
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "elasticsearch>=8.0.0",
+#     "psycopg2-binary>=2.9.0",
+# ]
+# ///
+```
+
+```bash
+uv run {baseDir}/scripts/search.py --query "..."
+```
+
+**Pattern C: Full `pyproject.toml` Project** -- Used by `local-places` (a FastAPI server). Only for complex multi-file applications with test suites.
+
+### Use Pattern B for `mas-kb`
+
+The `mas-kb` skill needs external packages (`elasticsearch`, `psycopg2`, `requests`, etc.) but is a single search script, not a full application. **Use Pattern B (PEP 723 + `uv run`).**
+
+Key requirements when using Pattern B:
+
+1. **Declare `uv` in metadata**: Add `"bins": ["uv"]` to `metadata.openclaw.requires` in the SKILL.md frontmatter so OpenClaw gates the skill on `uv` being available
+2. **All script invocations use `uv run`**: In SKILL.md body, always show `uv run {baseDir}/scripts/search.py`, never `uv run {baseDir}/scripts/search.py`
+3. **PEP 723 block at top of script**: Right after the shebang line, before any imports
+4. **No `requirements.txt` or `pyproject.toml`**: Dependencies live in the script itself
+5. **Pin minimum versions**: Use `>=` not `==` for flexibility
+
+Example of the complete script header:
+
+```python
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "elasticsearch>=8.0.0",
+# ]
+# ///
+"""Search MAS knowledge base documents."""
+
+import argparse
+import json
+import os
+import sys
+
+from elasticsearch import Elasticsearch
+```
+
+### Updated Metadata for `mas-kb`
+
+Because the script uses `uv run`, declare `uv` as a required binary:
+
+```yaml
+metadata:
+  {"openclaw": {"requires": {"bins": ["uv"], "env": ["MAS_API_KEY"]}, "primaryEnv": "MAS_API_KEY", "install": [{"id": "uv-brew", "kind": "brew", "formula": "uv", "bins": ["uv"], "label": "Install uv (brew)"}]}}
+```
+
+### Do NOT Use
+
+- **System python with pip install** -- Skills must not modify the system Python environment
+- **`requirements.txt`** -- No skill in OpenClaw uses this pattern
+- **Manual venv creation** -- `uv run` with PEP 723 handles isolation automatically
+- **Poetry/pipenv/conda** -- Not used in any OpenClaw skill
+
+---
+
+## 8. Python Script Guidelines
 
 For `scripts/search.py`:
 
-1. **Use only standard library + `requests`** (or document dependencies clearly with install instructions)
-2. **Read config from environment variables**: `MAS_API_KEY`, `MAS_API_ENDPOINT`, etc.
-3. **Output JSON to stdout**: The agent parses this to understand results
-4. **Output errors to stderr**: Keep stdout clean for parsing
-5. **Use `argparse`** for CLI argument handling with `--help` support
-6. **Exit codes**: 0 for success, 1 for user error, 2 for server/network error
-7. **Test the script** by running it before finalizing -- scripts must work
-8. **Include a shebang line**: `#!/usr/bin/env python3`
-9. **Make it executable**: `chmod +x scripts/search.py`
+1. **PEP 723 dependency block** at the top declaring all external packages
+2. **Execute via `uv run`**, never direct `python3`
+3. **Read config from environment variables**: `MAS_API_KEY`, `MAS_API_ENDPOINT`, etc.
+4. **Output JSON to stdout**: The agent parses this to understand results
+5. **Output errors to stderr**: Keep stdout clean for parsing
+6. **Use `argparse`** for CLI argument handling with `--help` support
+7. **Exit codes**: 0 for success, 1 for user error, 2 for server/network error
+8. **Test the script** by running it before finalizing -- scripts must work
+9. **Include a shebang line**: `#!/usr/bin/env python3`
+10. **Make it executable**: `chmod +x scripts/search.py`
 
 ---
 
