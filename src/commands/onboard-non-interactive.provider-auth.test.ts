@@ -10,7 +10,6 @@ import {
   readJsonFile,
   type NonInteractiveRuntime,
 } from "./onboard-non-interactive.test-helpers.js";
-import { OPENAI_DEFAULT_MODEL } from "./openai-model-default.js";
 
 type OnboardEnv = {
   configPath: string;
@@ -346,17 +345,6 @@ describe("onboard (non-interactive): provider auth", () => {
     });
   });
 
-  it("stores OpenAI API key and sets OpenAI default model", async () => {
-    await withOnboardEnv("openclaw-onboard-openai-", async (env) => {
-      const cfg = await runOnboardingAndReadConfig(env, {
-        authChoice: "openai-api-key",
-        openaiApiKey: "sk-openai-test",
-      });
-
-      expect(cfg.agents?.defaults?.model?.primary).toBe(OPENAI_DEFAULT_MODEL);
-    });
-  });
-
   it.each([
     {
       name: "anthropic",
@@ -366,14 +354,7 @@ describe("onboard (non-interactive): provider auth", () => {
       flagName: "--anthropic-api-key",
       envVar: "ANTHROPIC_API_KEY",
     },
-    {
-      name: "openai",
-      prefix: "openclaw-onboard-ref-flag-openai-",
-      authChoice: "openai-api-key",
-      optionKey: "openaiApiKey",
-      flagName: "--openai-api-key",
-      envVar: "OPENAI_API_KEY",
-    },
+
     {
       name: "openrouter",
       prefix: "openclaw-onboard-ref-flag-openrouter-",

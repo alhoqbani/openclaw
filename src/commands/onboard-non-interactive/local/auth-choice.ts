@@ -44,7 +44,6 @@ import {
   setMistralApiKey,
   setMinimaxApiKey,
   setMoonshotApiKey,
-  setOpenaiApiKey,
   setOpencodeZenApiKey,
   setOpenrouterApiKey,
   setSyntheticApiKey,
@@ -64,7 +63,6 @@ import {
   resolveCustomProviderId,
 } from "../../onboard-custom.js";
 import type { AuthChoice, OnboardOptions } from "../../onboard-types.js";
-import { applyOpenAIConfig } from "../../openai-model-default.js";
 import { detectZaiEndpoint } from "../../zai-endpoint-detect.js";
 import { resolveNonInteractiveApiKey } from "../api-keys.js";
 
@@ -495,33 +493,6 @@ export async function applyNonInteractiveAuthChoice(params: {
       mode: "api_key",
     });
     return applyQianfanConfig(nextConfig);
-  }
-
-  if (authChoice === "openai-api-key") {
-    const resolved = await resolveApiKey({
-      provider: "openai",
-      cfg: baseConfig,
-      flagValue: opts.openaiApiKey,
-      flagName: "--openai-api-key",
-      envVar: "OPENAI_API_KEY",
-      runtime,
-    });
-    if (!resolved) {
-      return null;
-    }
-    if (
-      !(await maybeSetResolvedApiKey(resolved, (value) =>
-        setOpenaiApiKey(value, undefined, apiKeyStorageOptions),
-      ))
-    ) {
-      return null;
-    }
-    nextConfig = applyAuthProfileConfig(nextConfig, {
-      profileId: "openai:default",
-      provider: "openai",
-      mode: "api_key",
-    });
-    return applyOpenAIConfig(nextConfig);
   }
 
   if (authChoice === "openrouter-api-key") {

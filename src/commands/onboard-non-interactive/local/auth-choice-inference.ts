@@ -11,7 +11,6 @@ type AuthChoiceFlagOptions = Pick<
   OnboardOptions,
   | "anthropicApiKey"
   | "geminiApiKey"
-  | "openaiApiKey"
   | "mistralApiKey"
   | "openrouterApiKey"
   | "kilocodeApiKey"

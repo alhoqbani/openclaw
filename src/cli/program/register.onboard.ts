@@ -141,7 +141,7 @@ export function registerOnboardCommand(program: Command) {
           tokenExpiresIn: opts.tokenExpiresIn as string | undefined,
           secretInputMode: opts.secretInputMode as SecretInputMode | undefined,
           anthropicApiKey: opts.anthropicApiKey as string | undefined,
-          openaiApiKey: opts.openaiApiKey as string | undefined,
+
           mistralApiKey: opts.mistralApiKey as string | undefined,
           openrouterApiKey: opts.openrouterApiKey as string | undefined,
           kilocodeApiKey: opts.kilocodeApiKey as string | undefined,

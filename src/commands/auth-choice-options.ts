@@ -26,8 +26,8 @@ const AUTH_CHOICE_GROUP_DEFS: {
   {
     value: "openai",
     label: "OpenAI",
-    hint: "Codex OAuth + API key",
-    choices: ["openai-codex", "openai-api-key"],
+    hint: "Codex OAuth",
+    choices: ["openai-codex"],
   },
   {
     value: "anthropic",

@@ -740,69 +740,6 @@ describe("applyAuthChoice", () => {
     }
   });
 
-  it("retries ref setup when provider preflight fails and can switch to env ref", async () => {
-    await setupTempState();
-    process.env.OPENAI_API_KEY = "sk-openai-env";
-
-    const selectValues: Array<"provider" | "env" | "filemain"> = ["provider", "filemain", "env"];
-    const select = vi.fn(async (params: Parameters<WizardPrompter["select"]>[0]) => {
-      const next = selectValues[0];
-      if (next && params.options.some((option) => option.value === next)) {
-        selectValues.shift();
-        return next as never;
-      }
-      return (params.options[0]?.value ?? "env") as never;
-    });
-    const text = vi
-      .fn<WizardPrompter["text"]>()
-      .mockResolvedValueOnce("/providers/openai/apiKey")
-      .mockResolvedValueOnce("OPENAI_API_KEY");
-    const note = vi.fn(async () => undefined);
-
-    const prompter = createPrompter({
-      select,
-      text,
-      note,
-      confirm: vi.fn(async () => true),
-    });
-    const runtime = createExitThrowingRuntime();
-
-    const result = await applyAuthChoice({
-      authChoice: "openai-api-key",
-      config: {
-        secrets: {
-          providers: {
-            filemain: {
-              source: "file",
-              path: "/tmp/openclaw-missing-secrets.json",
-              mode: "json",
-            },
-          },
-        },
-      },
-      prompter,
-      runtime,
-      setDefaultModel: false,
-      opts: { secretInputMode: "ref" },
-    });
-
-    expect(result.config.auth?.profiles?.["openai:default"]).toMatchObject({
-      provider: "openai",
-      mode: "api_key",
-    });
-    expect(note).toHaveBeenCalledWith(
-      expect.stringContaining("Could not validate provider reference"),
-      "Reference check failed",
-    );
-    expect(note).toHaveBeenCalledWith(
-      expect.stringContaining("Validated environment variable OPENAI_API_KEY."),
-      "Reference validated",
-    );
-    expect(await readAuthProfile("openai:default")).toMatchObject({
-      keyRef: { source: "env", provider: "default", id: "OPENAI_API_KEY" },
-    });
-  });
-
   it("keeps existing default model for explicit provider keys when setDefaultModel=false", async () => {
     const scenarios: Array<{
       authChoice: "xai-api-key" | "opencode-zen";

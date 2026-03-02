@@ -11,7 +11,6 @@ export type AuthChoice =
   | "chutes"
   | "vllm"
   | "openai-codex"
-  | "openai-api-key"
   | "openrouter-api-key"
   | "kilocode-api-key"
   | "litellm-api-key"
@@ -111,7 +110,7 @@ export type OnboardOptions = {
   /** API key persistence mode for onboarding flows (default: plaintext). */
   secretInputMode?: SecretInputMode;
   anthropicApiKey?: string;
-  openaiApiKey?: string;
+
   mistralApiKey?: string;
   openrouterApiKey?: string;
   kilocodeApiKey?: string;
